@@ -1,8 +1,8 @@
-# ONE SAY SCHOOL MANAGEMENT SYSTEM
+# ONESAY SCHOOL MANAGEMENT SYSTEM
 
 **Satu Data · Satu Pembelajaran · Satu Manajemen · Satu Evaluasi**
 
-ONE SAY adalah sistem manajemen sekolah terintegrasi untuk mendukung pengelolaan informasi, administrasi, pembelajaran, dan evaluasi sekolah dalam satu platform.
+ONESAY adalah sistem manajemen sekolah terintegrasi untuk mendukung pengelolaan informasi, administrasi, pembelajaran, dan evaluasi sekolah dalam satu platform.
 
 ## Teknologi
 
