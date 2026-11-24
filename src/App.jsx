@@ -1,5 +1,6 @@
 import GtkModule from "./features/gtk/GtkModule";
 import { useState } from "react";
+import { useAuth } from "./features/auth/AuthGate";
 import {
   Activity,
   ArrowRight,
@@ -33,12 +34,28 @@ import {
   Layers3,
 } from "lucide-react";
 
+const ROLE_LABELS = {
+  admin_induk: "Administrator Induk",
+  admin_gtk: "Administrator GTK",
+  waka_sarpras: "Wakil Kepala Sekolah Bidang Sarpras",
+  waka_kurikulum: "Wakil Kepala Sekolah Bidang Kurikulum",
+  waka_kesiswaan: "Wakil Kepala Sekolah Bidang Kesiswaan",
+  viewer: "Pengguna Viewer",
+};
+
+const MODULE_PERMISSIONS = {
+  gtk: ["admin_induk", "admin_gtk"],
+  sarpras: ["admin_induk", "waka_sarpras"],
+  kurikulum: ["admin_induk", "waka_kurikulum"],
+  "peserta-didik": ["admin_induk", "waka_kesiswaan"],
+};
+
 const modules = [
   {
     id: "gtk",
     title: "Sistem GTK",
     description: "Guru dan Tenaga Kependidikan",
-    role: "Admin Induk",
+    role: "Administrator GTK",
     icon: Users,
     color: "blue",
     symbol: "GTK",
@@ -110,6 +127,11 @@ const navigation = [
 ];
 
 function App() {
+  const { user, profile, claims, logout } = useAuth();
+
+  const role = claims?.role;
+  const modulesAccess = claims?.modules || {};
+
   const [activeMenu, setActiveMenu] = useState("portal");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [showToken, setShowToken] = useState(false);
@@ -118,6 +140,43 @@ function App() {
   const [showActivityMenu, setShowActivityMenu] = useState(false);
   const [notice, setNotice] = useState("");
 
+  const canAccessModule = (moduleId) => {
+    if (role === "admin_induk") return true;
+
+    const allowedRoles = MODULE_PERMISSIONS[moduleId] || [];
+
+    const roleAllowed = allowedRoles.includes(role);
+    const moduleGranted = modulesAccess[moduleId === "peserta-didik"
+      ? "peserta_didik"
+      : moduleId];
+
+    return roleAllowed && moduleGranted === true;
+  };
+
+  const visibleModules = modules.filter((module) =>
+    canAccessModule(module.id)
+  );
+
+  const visibleNavigation = navigation.filter((item) => {
+    if (["portal", "laporan", "pengaturan"].includes(item.id)) {
+      return role === "admin_induk";
+    }
+
+    return canAccessModule(item.id);
+  });
+
+  const displayName = profile?.nama || user?.email || "Pengguna";
+  const displayRole = ROLE_LABELS[role] || "Pengguna";
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error("Logout gagal:", error);
+      setNotice("Gagal keluar dari sistem. Silakan coba kembali.");
+    }
+  };
+
   const openModule = (id, label) => {
     if (id === "portal") {
       setActiveMenu("portal");
@@ -125,17 +184,23 @@ function App() {
       return;
     }
 
-  if (id === "gtk") {
-    setActiveMenu("gtk");
-    setNotice("");
-    return;
-  }
+    if (MODULE_PERMISSIONS[id]) {
+      if (!canAccessModule(id)) {
+        setNotice("Anda tidak memiliki izin untuk mengakses modul ini.");
+        return;
+      }
 
-  if (["sarpras", "kurikulum", "peserta-didik"].includes(id)) {
-    setActiveMenu(id);
-    setNotice(`Ruang kerja ${label} akan dibangun pada tahap pengembangan modul.`);
-    return;
-  }
+      setActiveMenu(id);
+      setNotice("");
+      return;
+    }
+
+    if (id === "laporan" || id === "pengaturan") {
+      if (role !== "admin_induk") {
+        setNotice("Anda tidak memiliki izin untuk mengakses halaman ini.");
+        return;
+      }
+    }
 
     setActiveMenu(id);
     setNotice(`Halaman ${label} akan tersedia pada tahap pengembangan berikutnya.`);
@@ -177,7 +242,7 @@ function App() {
         </button>
 
         <nav className={`main-navigation ${mobileMenu ? "open" : ""}`}>
-          {navigation.map((item) => {
+          {visibleNavigation.map((item) => {
             const Icon = item.icon;
             return (
               <button
@@ -237,22 +302,22 @@ function App() {
                 <UserRound size={26} />
               </div>
               <div className="user-details">
-                <strong>Admin Induk</strong>
-                <span>Super Administrator</span>
+                <strong>{displayName}</strong>
+                <span>{displayRole}</span>
               </div>
               <ChevronDown size={17} />
             </button>
 
             {showProfile && (
               <div className="header-popover profile-popover">
-                <strong>Admin Induk</strong>
+                <strong>{displayName}</strong>
                 <button onClick={() => setNotice("Profil pengguna akan dikembangkan.")}>
                   <UserRound size={15} /> Profil Saya
                 </button>
                 <button onClick={() => setNotice("Pengaturan akun akan dikembangkan.")}>
                   <Settings size={15} /> Pengaturan Akun
                 </button>
-                <button onClick={() => setNotice("Fitur keluar akan aktif setelah autentikasi tersedia.")}>
+                <button onClick={handleLogout}>
                   <LogOut size={15} /> Keluar
                 </button>
               </div>
@@ -363,7 +428,7 @@ function App() {
               </div>
 
               <div className="module-grid">
-                {modules.map((module) => (
+                {visibleModules.map((module) => (
                   <ModuleCard
                     key={module.id}
                     module={module}
