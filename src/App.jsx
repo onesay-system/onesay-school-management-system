@@ -1,4 +1,4 @@
-
+import GtkModule from "./features/gtk/GtkModule";
 import { useState } from "react";
 import {
   Activity,
@@ -125,11 +125,17 @@ function App() {
       return;
     }
 
-    if (["gtk", "sarpras", "kurikulum", "peserta-didik"].includes(id)) {
-      setActiveMenu(id);
-      setNotice(`Ruang kerja ${label} akan dibangun pada tahap pengembangan modul.`);
-      return;
-    }
+  if (id === "gtk") {
+    setActiveMenu("gtk");
+    setNotice("");
+    return;
+  }
+
+  if (["sarpras", "kurikulum", "peserta-didik"].includes(id)) {
+    setActiveMenu(id);
+    setNotice(`Ruang kerja ${label} akan dibangun pada tahap pengembangan modul.`);
+    return;
+  }
 
     setActiveMenu(id);
     setNotice(`Halaman ${label} akan tersedia pada tahap pengembangan berikutnya.`);
@@ -256,14 +262,18 @@ function App() {
       </header>
 
       <main id="portal" className="dashboard">
-        {notice && (
-          <div className="notice-banner" role="status">
-            <span>{notice}</span>
-            <button onClick={() => setNotice("")} aria-label="Tutup">
-              <X size={17} />
-            </button>
-          </div>
-        )}
+        {activeMenu === "gtk" ? (
+          <GtkModule onBack={() => setActiveMenu("portal")} />
+        ) : (
+          <>
+            {notice && (
+              <div className="notice-banner" role="status">
+                <span>{notice}</span>
+                <button onClick={() => setNotice("")} aria-label="Tutup">
+                  <X size={17} />
+                </button>
+              </div>
+            )}
 
         <section className="hero">
           <div className="hero-photo" />
@@ -519,7 +529,9 @@ function App() {
     </a>
   </span>
 </footer>
-      </main>
+    </>
+  )}
+</main>
     </div>
   );
 }

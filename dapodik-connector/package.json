@@ -1,0 +1,19 @@
+
+{
+  "name": "onesay-dapodik-connector",
+  "version": "1.0.0",
+  "description": "Local Dapodik connector for ONESAY School Management System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "onesay",
+    "dapodik",
+    "school-management"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "commonjs"
+}
