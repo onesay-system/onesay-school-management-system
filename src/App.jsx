@@ -151,7 +151,10 @@ function App() {
           }}
         >
           <div className="brand-mark">
-            <img src="/assets/images/logo-onesay.png" alt="Logo ONESAY" />
+            <img
+              src={`${import.meta.env.BASE_URL}assets/images/logo-onesay.png`}
+              alt="Logo ONESAY"
+            />
           </div>
           <div className="brand-copy">
             <strong>ONESAY</strong>
