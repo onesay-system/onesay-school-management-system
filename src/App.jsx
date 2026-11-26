@@ -1,8 +1,17 @@
 import GtkModule from "./features/gtk/GtkModule";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./features/auth/AuthGate";
 import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
+} from "firebase/auth";
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { db, storage } from "./config/firebase";
+import {
   Activity,
+  Camera,
   ArrowRight,
   ArrowUpRight,
   Bell,
@@ -139,6 +148,13 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showActivityMenu, setShowActivityMenu] = useState(false);
   const [notice, setNotice] = useState("");
+
+  const openAccountPage = (page) => {
+    setActiveMenu(page);
+    setShowProfile(false);
+    setShowNotifications(false);
+    setNotice("");
+  };
 
   const canAccessModule = (moduleId) => {
     if (role === "admin_induk") return true;
@@ -311,10 +327,10 @@ function App() {
             {showProfile && (
               <div className="header-popover profile-popover">
                 <strong>{displayName}</strong>
-                <button onClick={() => setNotice("Profil pengguna akan dikembangkan.")}>
+                <button onClick={() => openAccountPage("profile")}>
                   <UserRound size={15} /> Profil Saya
                 </button>
-                <button onClick={() => setNotice("Pengaturan akun akan dikembangkan.")}>
+                <button onClick={() => openAccountPage("account")}>
                   <Settings size={15} /> Pengaturan Akun
                 </button>
                 <button onClick={handleLogout}>
@@ -327,7 +343,19 @@ function App() {
       </header>
 
       <main id="portal" className="dashboard">
-        {activeMenu === "gtk" ? (
+        {activeMenu === "profile" ? (
+          <ProfilePage
+            user={user}
+            profile={profile}
+            roleLabel={displayRole}
+            onBack={() => setActiveMenu("portal")}
+          />
+        ) : activeMenu === "account" ? (
+          <AccountSettingsPage
+            user={user}
+            onBack={() => setActiveMenu("portal")}
+          />
+        ) : activeMenu === "gtk" ? (
           <GtkModule onBack={() => setActiveMenu("portal")} />
         ) : (
           <>
@@ -598,6 +626,344 @@ function App() {
   )}
 </main>
     </div>
+  );
+}
+
+
+function formatAccountDate(value, fallback) {
+  let date = null;
+
+  if (value?.toDate) {
+    date = value.toDate();
+  } else if (value) {
+    date = new Date(value);
+  } else if (fallback) {
+    date = new Date(fallback);
+  }
+
+  if (!date || Number.isNaN(date.getTime())) return "Belum tersedia";
+
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function ProfilePage({ user, profile, roleLabel, onBack }) {
+  const [photoURL, setPhotoURL] = useState(profile?.photoURL || user?.photoURL || "");
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMessage, setPhotoMessage] = useState({ type: "", text: "" });
+  const photoInputRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    if (user?.uid) {
+      getDoc(doc(db, "pengguna", user.uid))
+        .then((snapshot) => {
+          if (active && snapshot.exists()) {
+            setPhotoURL(snapshot.data()?.photoURL || user?.photoURL || "");
+          }
+        })
+        .catch((error) => console.error("Gagal memuat foto profil:", error));
+    }
+    return () => { active = false; };
+  }, [user?.uid, user?.photoURL]);
+
+  const handlePhotoUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      setPhotoMessage({ type: "error", text: "Gunakan file JPG, PNG, atau WEBP." });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setPhotoMessage({ type: "error", text: "Ukuran foto maksimal 2 MB." });
+      return;
+    }
+    if (!user?.uid) {
+      setPhotoMessage({ type: "error", text: "Sesi pengguna tidak valid. Silakan login ulang." });
+      return;
+    }
+
+    setPhotoBusy(true);
+    setPhotoMessage({ type: "", text: "" });
+    const previousPath = profile?.photoPath;
+    const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+    const nextPath = `profile-photos/${user.uid}/avatar-${Date.now()}.${extension}`;
+
+    try {
+      const targetRef = storageRef(storage, nextPath);
+      await uploadBytes(targetRef, file, { contentType: file.type });
+      const nextURL = await getDownloadURL(targetRef);
+      await updateDoc(doc(db, "pengguna", user.uid), {
+        photoURL: nextURL,
+        photoPath: nextPath,
+        updatedAt: serverTimestamp(),
+      });
+      setPhotoURL(nextURL);
+      setPhotoMessage({ type: "success", text: "Foto profil berhasil diperbarui." });
+
+      if (previousPath && previousPath !== nextPath) {
+        deleteObject(storageRef(storage, previousPath)).catch(() => {});
+      }
+    } catch (error) {
+      console.error("Gagal memperbarui foto profil:", error);
+      setPhotoMessage({ type: "error", text: "Foto gagal diunggah. Periksa koneksi dan aturan Firebase Storage/Firestore." });
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const joinedAt = formatAccountDate(
+    profile?.createdAt,
+    user?.metadata?.creationTime
+  );
+
+  return (
+    <section className="account-page">
+      <div className="account-page-heading">
+        <div>
+          <span className="account-eyebrow">AKUN PENGGUNA</span>
+          <h1>Profil Saya</h1>
+          <p>Informasi identitas akun yang sedang digunakan pada ONESAY.</p>
+        </div>
+        <button className="account-back-button" onClick={onBack}>
+          <ArrowRight size={16} className="back-arrow-icon" />
+          Kembali ke Portal
+        </button>
+      </div>
+
+      <div className="account-profile-card">
+        <div className="account-profile-cover" />
+        <div className="account-profile-main">
+          <div className="account-avatar-editor">
+            <div className="account-large-avatar">
+              {photoURL ? <img src={photoURL} alt="Foto Administrator Induk" /> : <UserRound size={42} />}
+            </div>
+            <button
+              type="button"
+              className="account-photo-upload-button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={photoBusy}
+            >
+              {photoBusy ? <RefreshCw size={14} className="account-photo-spinner" /> : <Camera size={14} />}
+              {photoBusy ? "Mengunggah..." : "Ganti Foto"}
+            </button>
+            <input
+              ref={photoInputRef}
+              className="account-photo-file-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handlePhotoUpload}
+            />
+          </div>
+          <div className="account-profile-name">
+            <h2>{profile?.nama || user?.displayName || "Pengguna ONESAY"}</h2>
+            <p>{roleLabel}</p>
+            <span className="account-status"><i /> {profile?.status || "Status tidak tersedia"}</span>
+          </div>
+        </div>
+
+        <div className="account-photo-guidance">
+          Format JPG, PNG, atau WEBP. Ukuran maksimal 2 MB.
+        </div>
+        {photoMessage.text && (
+          <div className={`account-photo-feedback ${photoMessage.type}`} role="status">
+            {photoMessage.text}
+          </div>
+        )}
+
+        <div className="account-information-grid">
+          <div className="account-information-item">
+            <span>Nama Lengkap</span>
+            <strong>{profile?.nama || user?.displayName || "Belum diisi"}</strong>
+          </div>
+          <div className="account-information-item">
+            <span>Alamat Email</span>
+            <strong>{user?.email || profile?.email || "Belum tersedia"}</strong>
+          </div>
+          <div className="account-information-item">
+            <span>Role Pengguna</span>
+            <strong>{roleLabel}</strong>
+          </div>
+          <div className="account-information-item">
+            <span>Status Akun</span>
+            <strong>{profile?.status || "Tidak diketahui"}</strong>
+          </div>
+          <div className="account-information-item">
+            <span>Tanggal Bergabung</span>
+            <strong>{joinedAt}</strong>
+          </div>
+          <div className="account-information-item account-uid-item">
+            <span>UID Firebase</span>
+            <strong title={user?.uid}>{user?.uid || "Tidak tersedia"}</strong>
+          </div>
+        </div>
+        <div className="account-readonly-note">
+          <ShieldCheck size={17} />
+          Informasi identitas dan hak akses dikelola oleh Administrator Induk.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AccountSettingsPage({ user, onBack }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState({ type: "", message: "" });
+
+  const handlePasswordUpdate = async (event) => {
+    event.preventDefault();
+    setFeedback({ type: "", message: "" });
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setFeedback({ type: "error", message: "Semua kolom password wajib diisi." });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setFeedback({ type: "error", message: "Password baru minimal 6 karakter." });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setFeedback({ type: "error", message: "Konfirmasi password baru tidak cocok." });
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setFeedback({ type: "error", message: "Password baru harus berbeda dari password saat ini." });
+      return;
+    }
+
+    if (!user?.email) {
+      setFeedback({ type: "error", message: "Email akun tidak ditemukan. Silakan login ulang." });
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setFeedback({
+        type: "success",
+        message: "Password berhasil diperbarui. Gunakan password baru pada login berikutnya.",
+      });
+    } catch (error) {
+      let message = "Password gagal diperbarui. Silakan coba kembali.";
+
+      if (error.code === "auth/wrong-password" || error.code === "auth/invalid-credential") {
+        message = "Password saat ini tidak sesuai.";
+      } else if (error.code === "auth/weak-password") {
+        message = "Password baru terlalu lemah. Gunakan password yang lebih kuat.";
+      } else if (error.code === "auth/requires-recent-login") {
+        message = "Sesi login sudah terlalu lama. Silakan keluar dan login kembali.";
+      } else if (error.code === "auth/too-many-requests") {
+        message = "Terlalu banyak percobaan. Coba kembali beberapa saat lagi.";
+      }
+
+      setFeedback({ type: "error", message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="account-page">
+      <div className="account-page-heading">
+        <div>
+          <span className="account-eyebrow">KEAMANAN PENGGUNA</span>
+          <h1>Pengaturan Akun</h1>
+          <p>Kelola keamanan akses akun ONESAY Anda.</p>
+        </div>
+        <button className="account-back-button" onClick={onBack}>
+          <ArrowRight size={16} className="back-arrow-icon" />
+          Kembali ke Portal
+        </button>
+      </div>
+
+      <div className="account-settings-layout">
+        <aside className="account-settings-summary">
+          <div className="account-settings-icon"><ShieldCheck size={30} /></div>
+          <h2>Keamanan Akun</h2>
+          <p>Perbarui password secara berkala dan jangan membagikan informasi login kepada orang lain.</p>
+          <div className="account-email-summary">
+            <span>Akun yang digunakan</span>
+            <strong>{user?.email || "Email tidak tersedia"}</strong>
+          </div>
+        </aside>
+
+        <form className="account-password-card" onSubmit={handlePasswordUpdate}>
+          <div className="account-card-heading">
+            <div className="account-card-icon"><Settings size={20} /></div>
+            <div>
+              <h2>Ubah Password</h2>
+              <p>Verifikasi password saat ini sebelum menyimpan password baru.</p>
+            </div>
+          </div>
+
+          <label className="account-field">
+            <span>Password Saat Ini</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              placeholder="Masukkan password saat ini"
+              disabled={saving}
+            />
+          </label>
+
+          <label className="account-field">
+            <span>Password Baru</span>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              placeholder="Minimal 6 karakter"
+              disabled={saving}
+            />
+          </label>
+
+          <label className="account-field">
+            <span>Konfirmasi Password Baru</span>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              placeholder="Ulangi password baru"
+              disabled={saving}
+            />
+          </label>
+
+          {feedback.message && (
+            <div className={`account-feedback ${feedback.type}`} role="status">
+              {feedback.message}
+            </div>
+          )}
+
+          <button className="account-save-button" type="submit" disabled={saving}>
+            <ShieldCheck size={17} />
+            {saving ? "Menyimpan..." : "Simpan Password Baru"}
+          </button>
+        </form>
+      </div>
+    </section>
   );
 }
 

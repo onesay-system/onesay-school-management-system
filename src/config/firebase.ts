@@ -2,10 +2,11 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 // Konfigurasi Firebase ONESAY
 const firebaseConfig = {
-  apiKey: "AIzaSyBhIOH7LcCR2Ixye2_P2l4e2quVvvz-t4w",
+  apiKey: "AIzaSyBhI0H7LcCR2Ixye2_P2l4e2quVvvz-t4w",
   authDomain: "onesayschoolmanagementsystem.firebaseapp.com",
   projectId: "onesayschoolmanagementsystem",
   storageBucket: "onesayschoolmanagementsystem.firebasestorage.app",
@@ -21,5 +22,8 @@ export const auth = getAuth(app);
 
 // Cloud Firestore
 export const db = getFirestore(app);
+
+// Firebase Storage untuk foto profil dan berkas aplikasi
+export const storage = getStorage(app);
 
 export default app;
