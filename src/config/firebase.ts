@@ -6,7 +6,7 @@ import { getStorage } from "firebase/storage";
 
 // Konfigurasi Firebase ONESAY
 const firebaseConfig = {
-  apiKey: "AIzaSyBhI0H7LcCR2Ixye2_P2l4e2quVvvz-t4w",
+  apiKey: "AIzaSyBhIOH7LcCR2Ixye2_P2l4e2quVvvz-t4w",
   authDomain: "onesayschoolmanagementsystem.firebaseapp.com",
   projectId: "onesayschoolmanagementsystem",
   storageBucket: "onesayschoolmanagementsystem.firebasestorage.app",
